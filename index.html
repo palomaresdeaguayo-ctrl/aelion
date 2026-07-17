@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Aelion v1.2</title>
+    <style>
+        body { background: #0a0a0a; color: #0f0; font-family: monospace; margin: 0; padding: 20px; }
+        #chat { height: 80vh; overflow-y: auto; border: 1px solid #0f0; padding: 10px; margin-bottom: 10px; }
+        #input { width: 80%; background: #111; color: #0f0; border: 1px solid #0f0; padding: 10px; }
+        #send { width: 18%; background: #0f0; color: #000; border: none; padding: 10px; cursor: pointer; }
+        .user { color: #0ff; }
+        .aelion { color: #0f0; }
+    </style>
+</head>
+<body>
+    <h1>🧠 AELION v1.2 - Puro Texto, Sin Lobo</h1>
+    <div id="chat"></div>
+    <input id="input" type="text" placeholder="Escribe aquí ingg..." autofocus>
+    <button id="send" onclick="enviar()">ENVIAR</button>
+
+<script>
+const chat = document.getElementById('chat');
+const input = document.getElementById('input');
+
+async function enviar() {
+    const texto = input.value.trim();
+    if (!texto) return;
+    
+    chat.innerHTML += `<div class="user">Tú: ${texto}</div>`;
+    input.value = '';
+    chat.scrollTop = chat.scrollHeight;
+    
+    try {
+        const res = await fetch('http://localhost:8000/chat', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({texto: texto})
+        });
+        const data = await res.json();
+        chat.innerHTML += `<div class="aelion">🤖 Aelion: ${data.respuesta}</div>`;
+    } catch (e) {
+        chat.innerHTML += `<div class="aelion">🤖 Aelion: ERROR - ¿Está uvicorn prendido?</div>`;
+    }
+    chat.scrollTop = chat.scrollHeight;
+}
+
+input.addEventListener('keypress', e => { if(e.key === 'Enter') enviar(); });
+</script>
+</body>
+</html>
