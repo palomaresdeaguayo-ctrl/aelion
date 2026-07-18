@@ -1,10 +1,11 @@
-from brain.llm import pensar
+﻿from brain.llm import pensar
 from memory.charla import guardar, cargar
-from brain.libros import buscar_en_libros
+from brain.libros import buscar_en_libros, leer_libro_completo, leer_libro_inteligente
 from tools.ejecutar import crear_archivo, leer_archivo, listar, ejecutar
 from tools.web import buscar_web
 from tools.code import ejecutar_python
 from tools.git import git_comando
+from pathlib import Path
 
 class Agent:
     def __init__(self):
@@ -14,113 +15,96 @@ class Agent:
         pass
 
     async def procesar(self, texto):
-        # 1. Guarda input del user
         guardar("user", texto)
         self.historial.append({"rol": "user", "texto": texto})
 
-        # 2. COMANDOS DE TOOLS - Prioridad sobre LLM
+        low = texto.lower()
+
         if texto.startswith("/crear "):
             try:
                 _, resto = texto.split("/crear ", 1)
                 nombre, contenido = resto.split("|", 1)
                 respuesta = crear_archivo(nombre.strip(), contenido.strip())
             except ValueError:
-                respuesta = "ERROR: Formato: /crear archivo.txt | contenido aquí"
+                respuesta = "ERROR: /crear archivo.txt | contenido"
 
         elif texto.startswith("/leer "):
-            nombre = texto.replace("/leer ", "").strip()
-            respuesta = leer_archivo(nombre)
+            respuesta = leer_archivo(texto.replace("/leer ", "").strip())
+
+        elif texto.startswith("/libro "):
+            # /libro nombre | capitulo 2 o /libro nombre | busca amor
+            resto = texto.replace("/libro ", "").strip()
+            if "|" in resto:
+                nombre, pet = resto.split("|", 1)
+                p = Path(f"libros/{nombre.strip()}.txt")
+                if not p.exists():
+                    # busca aproximado
+                    from brain.libros import _lista_archivos, _normaliza
+                    for a in _lista_archivos():
+                        if _normaliza(nombre) in _normaliza(a.stem):
+                            p = a
+                            break
+                if p.exists():
+                    respuesta = leer_libro_inteligente(p, busqueda=pet, consulta=pet)
+                else:
+                    respuesta = f"No encontré libro {nombre}"
+            else:
+                respuesta = leer_libro_completo(resto)
 
         elif texto.startswith("/ls"):
-            partes = texto.split()
-            carpeta = partes[1] if len(partes) > 1 else "sandbox"
+            carpeta = texto.split()[1] if len(texto.split())>1 else "sandbox"
             respuesta = listar(carpeta)
 
         elif texto.startswith("/cmd "):
-            comando = texto.replace("/cmd ", "").strip()
-            respuesta = ejecutar(comando)
+            respuesta = ejecutar(texto.replace("/cmd ", "").strip())
 
         elif texto.startswith("/google "):
-            query = texto.replace("/google ", "").strip()
-            if not query:
-                respuesta = "ERROR: Uso: /google tu búsqueda"
-            else:
-                respuesta = buscar_web(query)
+            q = texto.replace("/google ", "").strip()
+            respuesta = buscar_web(q) if q else "ERROR: /google query"
 
         elif texto.startswith("/python "):
-            codigo = texto.replace("/python ", "").strip()
-            if not codigo:
-                respuesta = "ERROR: Uso: /python print('hola')"
-            else:
-                resultado = ejecutar_python(codigo)
-                respuesta = f"```python\n{codigo}\n```\n\nOutput:\n```\n{resultado}\n```"
+            cod = texto.replace("/python ", "").strip()
+            out = ejecutar_python(cod)
+            respuesta = f"```python\n{cod}\n```\nOutput:\n```\n{out}\n```"
 
         elif texto.startswith("/git "):
             args = texto.replace("/git ", "").strip()
-            if not args:
-                respuesta = "ERROR: Uso: /git status | /git add. | /git commit -m 'msg'"
-            else:
-                resultado = git_comando(args)
-                respuesta = f"```bash\n$ git {args}\n```\n\n```\n{resultado}\n```"
+            out = git_comando(args)
+            respuesta = f"$ git {args}\n{out}"
 
         else:
-            # 3. FLUJO NORMAL CON LLM
-            contexto = "\n".join([f"{m['rol']}: {m['texto']}" for m in self.historial[-6:]])
+            contexto = "\n".join([f"{m['rol']}: {m['texto']}" for m in self.historial[-8:]])
 
-            # Detecta si pregunta por libros
-            if any(p in texto.lower() for p in ['libro', 'obra', 'escribí', 'capítulo', 'cuento', 'novela', 'arte', 'benito']):
-                info_libros = buscar_en_libros(texto)
-                prompt = f"""Eres Aelion. Agente de Pablo Aguayo.
+            if any(k in low for k in ['libro','obra','capitulo','capítulo','poema','cuento','novela','vers','arte borin','benito','katherine','pacto','venganza','rosa','brindis','eterna','arrimado']):
+                info = buscar_en_libros(texto)
+                prompt = f"""Eres Aelion. Agente de Pablo Aguayo, escritor.
 
-Historial reciente:
+Historial:
 {contexto}
 
-Información encontrada en /libros:
-{info_libros}
+DATOS REALES DE /libros (USA SOLO ESTO, NO INVENTES):
+{info}
 
-Pregunta actual: {texto}
+Pregunta: {texto}
 
-Instrucciones: Responde directo, mexicano, sin rodeos. Si te piden hacer algo, usa tus comandos disponibles."""
-
+REGLAS:
+- Lista exacta, no inventes títulos.
+- Si te piden leer/discutir un capítulo/poema, usa el texto de DATOS REALES para analizar.
+- Si el texto es corto (poema), citalo y luego opina.
+- Si es largo, resume y discute tema, estilo, símbolos.
+- Habla como carnal culto de Puebla, directo, sin rodeos.
+"""
             else:
                 prompt = f"""Eres Aelion. Agente de Pablo Aguayo.
-
-Historial reciente:
+Historial:
 {contexto}
-
-Pregunta actual: {texto}
-
-Instrucciones: Responde directo, mexicano, útil. Tienes estos comandos:
-- /crear archivo.txt | contenido
-- /leer ruta/archivo.txt
-- /ls carpeta
-- /cmd comando
-- /google búsqueda web
-- /python código a ejecutar
-- /git status|add|commit|log|diff
-
-Si el user pide algo que puedes hacer con comandos, hazlo o explícale cómo."""
+Pregunta: {texto}
+Responde directo, útil. Comandos: /crear /leer /libro nombre | capitulo X /ls /cmd /google /python /git"""
 
             respuesta = pensar(prompt)
 
-        # 4. Guarda respuesta
         guardar("assistant", respuesta)
         self.historial.append({"rol": "assistant", "texto": respuesta})
         return respuesta
 
 agent = Agent()
-
-# Modo consola opcional
-async def modo_consola():
-    await agent.iniciar()
-    print("🧠 Aelion v1.4 online. Tools avanzadas: /google /python /git")
-    while True:
-        texto = input("Tú: ")
-        if texto.lower() in ['salir', 'exit']:
-            break
-        respuesta = await agent.procesar(texto)
-        print(f"\n🤖 Aelion: {respuesta}\n")
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(modo_consola())

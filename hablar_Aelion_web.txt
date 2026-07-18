@@ -1,0 +1,16 @@
+cd C:\Users\Pablo\Desktop\Aelion
+taskkill /IM python.exe /F
+python api.py
+
+
+
+http://localhost:8000
+
+
+
+
+
+
+
+taskkill /F /IM python.exe
+python api.py
